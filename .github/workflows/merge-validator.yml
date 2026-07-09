@@ -1,0 +1,88 @@
+name: Merge Validator
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Runner image
+        type: string
+        default: windows-2022
+      install-qt:
+        description: Install Qt via setup-build-env
+        type: boolean
+        default: true
+      qt-modules:
+        description: Extra Qt modules (space-separated)
+        type: string
+        default: ''
+      run-tests:
+        description: Pass -RunTests to build.ps1
+        type: boolean
+        default: true
+      allow-forks:
+        description: Run the full build for fork PRs (only safe when no secrets are needed)
+        type: boolean
+        default: false
+      fork-tests-only:
+        description: Run a tests-only build for fork PRs
+        type: boolean
+        default: false
+
+jobs:
+  full-validation:
+    name: Build
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (!startsWith(github.event.pull_request.head.ref, 'release-please--') &&
+       (inputs.allow-forks ||
+        github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup environment
+        uses: brunofgmag/gsx-integrator-ci/.github/actions/setup-build-env@main
+        with:
+          install-qt: ${{ inputs.install-qt }}
+          qt-modules: ${{ inputs.qt-modules }}
+          sdk-url: ${{ secrets.MSFS_SDK_URL }}
+          sdk-sha256: ${{ secrets.MSFS_SDK_SHA256 }}
+
+      - name: Build
+        shell: pwsh
+        run: ./build.ps1 -Config Release ${{ inputs.run-tests && '-RunTests' || '' }}
+
+  fork-validation:
+    name: Build (tests only)
+    if: >-
+      inputs.fork-tests-only &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup environment
+        uses: brunofgmag/gsx-integrator-ci/.github/actions/setup-build-env@main
+        with:
+          qt-modules: ${{ inputs.qt-modules }}
+
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build/tests-only
+          -G "Visual Studio 17 2022" -A x64
+          -DGSXI_TESTS_ONLY=ON
+          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build tests
+        shell: pwsh
+        run: cmake --build build/tests-only --config Release
+
+      - name: Run tests
+        shell: pwsh
+        run: ctest --test-dir build/tests-only -C Release --output-on-failure

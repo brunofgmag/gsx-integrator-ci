@@ -1,0 +1,51 @@
+name: Bump Version
+
+on:
+  workflow_call:
+
+jobs:
+  bump-version:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (!startsWith(github.event.head_commit.message, 'chore: release') &&
+       !startsWith(github.event.head_commit.message, 'chore(develop): release'))
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Verify branch
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/develop" ]; then
+            echo "::error::bump-version must run on develop. Got: $REF"
+            exit 1
+          fi
+
+      - name: Run Release Please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          token: ${{ secrets.RELEASE_MERGE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: develop
+          skip-github-release: true
+
+      - name: Auto-merge release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_MERGE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_BRANCH: release-please--branches--develop--components--${{ github.event.repository.name }}
+        run: |
+          pr="$(gh pr list --state open --head "$HEAD_BRANCH" --json number --jq '.[0].number // empty')"
+          if [ -z "$pr" ]; then
+            echo "No open release PR; nothing to merge."
+            exit 0
+          fi
+          identity="$(gh pr view "$pr" --json author,isCrossRepository,files \
+            --jq '"\(.author.login) \(.isCrossRepository) \([.files[].path] | sort | join(","))"')"
+          if [ "$identity" != "brunofgmag false .release-please-manifest.json,CHANGELOG.md,VERSION.txt" ]; then
+            echo "::error::PR #$pr does not look like a legitimate release PR ($identity)"
+            exit 1
+          fi
+          gh pr merge "$pr" --squash --admin
+          gh pr edit "$pr" --remove-label "autorelease: pending"
