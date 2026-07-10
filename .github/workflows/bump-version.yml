@@ -49,3 +49,34 @@ jobs:
           fi
           gh pr merge "$pr" --squash --admin
           gh pr edit "$pr" --remove-label "autorelease: pending"
+
+      # Tag the release commit on develop so release-please can find the
+      # previous release in the target branch history; without this every
+      # changelog accumulates all commits since the first release.
+      - name: Tag release commit
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_MERGE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_BRANCH: release-please--branches--develop--components--${{ github.event.repository.name }}
+        run: |
+          pr="$(gh pr list --state merged --head "$HEAD_BRANCH" --limit 1 --json number --jq '.[0].number // empty')"
+          if [ -z "$pr" ]; then
+            echo "No merged release PR; nothing to tag."
+            exit 0
+          fi
+          sha=""
+          for _ in 1 2 3; do
+            sha="$(gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // empty')"
+            [ -n "$sha" ] && break
+            sleep 3
+          done
+          if [ -z "$sha" ]; then
+            echo "::error::Could not resolve merge commit for release PR #$pr"
+            exit 1
+          fi
+          version="$(gh api "repos/$GH_REPO/contents/VERSION.txt?ref=$sha" --jq '.content' | base64 -d | tr -d '[:space:]')"
+          if gh api "repos/$GH_REPO/git/ref/tags/v$version" >/dev/null 2>&1; then
+            echo "Tag v$version already exists; skipping."
+          else
+            gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/v$version" -f sha="$sha"
+          fi
