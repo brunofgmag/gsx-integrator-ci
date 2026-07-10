@@ -1,0 +1,38 @@
+name: Back-merge
+
+on:
+  workflow_call:
+
+jobs:
+  back-merge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify branch
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::back-merge must run on main. Got: $REF"
+            exit 1
+          fi
+
+      - name: Checkout develop
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_MERGE_TOKEN }}
+
+      - name: Merge main into develop
+        run: |
+          set -euo pipefail
+          if git merge-base --is-ancestor origin/main develop; then
+            echo "develop already contains main; nothing to do."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git merge -X ours --no-ff origin/main \
+            -m 'chore: back-merge main into develop [skip ci]'
+          git push origin develop
