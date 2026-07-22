@@ -19,6 +19,10 @@ on:
         description: Pass -RunTests to build.ps1
         type: boolean
         default: true
+      no-sim:
+        description: Pass -NoSim to build.ps1
+        type: boolean
+        default: false
       allow-forks:
         description: Run the full build for fork PRs (only safe when no secrets are needed)
         type: boolean
@@ -52,7 +56,7 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: ./build.ps1 -Config Release ${{ inputs.run-tests && '-RunTests' || '' }}
+        run: ./build.ps1 -Config Release ${{ inputs.run-tests && '-RunTests' || '' }} ${{ inputs.no-sim && '-NoSim' || '' }}
 
   fork-validation:
     name: Build (tests only)
