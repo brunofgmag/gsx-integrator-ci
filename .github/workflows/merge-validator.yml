@@ -31,6 +31,10 @@ on:
         description: Run a tests-only build for fork PRs
         type: boolean
         default: false
+      tests-only-flag:
+        description: CMake option that configures the tests-only build
+        type: string
+        default: GSXI_TESTS_ONLY
 
 jobs:
   full-validation:
@@ -80,7 +84,7 @@ jobs:
         run: >
           cmake -S . -B build/tests-only
           -G "Visual Studio 17 2022" -A x64
-          -DGSXI_TESTS_ONLY=ON
+          -D${{ inputs.tests-only-flag }}=ON
           -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
 
       - name: Build tests
