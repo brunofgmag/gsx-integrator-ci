@@ -11,10 +11,18 @@ on:
         description: Install Qt via setup-build-env
         type: boolean
         default: true
+      qt-version:
+        description: Qt version, shared by the Windows and Linux jobs
+        type: string
+        default: '6.8.3'
       qt-modules:
         description: Extra Qt modules (space-separated)
         type: string
         default: ''
+      domain-tests:
+        description: Build and test the portable layers on Linux, alongside the Windows build
+        type: boolean
+        default: false
       run-tests:
         description: Pass -RunTests to build.ps1
         type: boolean
@@ -54,6 +62,7 @@ jobs:
         uses: brunofgmag/gsx-integrator-ci/.github/actions/setup-build-env@main
         with:
           install-qt: ${{ inputs.install-qt }}
+          qt-version: ${{ inputs.qt-version }}
           qt-modules: ${{ inputs.qt-modules }}
           sdk-url: ${{ secrets.MSFS_SDK_URL }}
           sdk-sha256: ${{ secrets.MSFS_SDK_SHA256 }}
@@ -61,6 +70,40 @@ jobs:
       - name: Build
         shell: pwsh
         run: ./build.ps1 -Config Release ${{ inputs.run-tests && '-RunTests' || '' }} ${{ inputs.no-sim && '-NoSim' || '' }}
+
+  domain-validation:
+    name: Build and test the domain on Linux
+    if: >-
+      inputs.domain-tests &&
+      (github.event_name == 'workflow_dispatch' ||
+       !startsWith(github.event.pull_request.head.ref, 'release-please--'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: ${{ inputs.qt-version }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Configure
+        run: >
+          cmake -S . -B build/tests-only
+          -D${{ inputs.tests-only-flag }}=ON
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+
+      - name: Build
+        run: cmake --build build/tests-only --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build/tests-only --output-on-failure
 
   fork-validation:
     name: Build (tests only)
