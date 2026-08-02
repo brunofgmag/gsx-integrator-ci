@@ -72,7 +72,7 @@ jobs:
         run: ./build.ps1 -Config Release ${{ inputs.run-tests && '-RunTests' || '' }} ${{ inputs.no-sim && '-NoSim' || '' }}
 
   domain-validation:
-    name: Build and test the domain on Linux
+    name: Build (Domain only)
     if: >-
       inputs.domain-tests &&
       (github.event_name == 'workflow_dispatch' ||
