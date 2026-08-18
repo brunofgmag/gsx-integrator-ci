@@ -1,0 +1,66 @@
+name: PR Changelog
+
+on:
+  workflow_call:
+
+jobs:
+  commit-override:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Build the block
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          subjects="$(gh api "repos/$GH_REPO/pulls/$NUMBER/commits" --paginate \
+            --jq '.[].commit.message | split("\n")[0]' | grep -vE '^(Merge|Revert) ' || true)"
+
+          if [ -z "$subjects" ]; then
+            echo "::error::pull request $NUMBER has no commit subject to list"
+            exit 1
+          fi
+
+          head="$(printf '%s' "$TITLE" | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//')"
+          spaced="$(printf '%s\n' "$subjects" | awk 'NF { if (n++) print ""; print }')"
+
+          {
+            echo 'block<<FSORG_BLOCK_EOF'
+            printf 'BEGIN_COMMIT_OVERRIDE\npr: %s (#%s)\n\n%s\nEND_COMMIT_OVERRIDE\n' \
+              "$head" "$NUMBER" "$spaced"
+            echo 'FSORG_BLOCK_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Put it in the body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          BLOCK: ${{ steps.build.outputs.block }}
+        run: |
+          gh pr view "$NUMBER" --json body --jq .body | tr -d '\r' > body.txt
+
+          awk '/^BEGIN_COMMIT_OVERRIDE$/ { skip = 1 }
+               !skip { print }
+               /^END_COMMIT_OVERRIDE$/ { skip = 0 }' body.txt \
+            | sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba' > prose.txt
+
+          if [ -s prose.txt ]; then
+            printf '%s\n\n%s' "$(cat prose.txt)" "$BLOCK" > wanted.txt
+          else
+            printf '%s' "$BLOCK" > wanted.txt
+          fi
+
+          if diff -q body.txt wanted.txt >/dev/null 2>&1; then
+            echo "the block is already current"
+            exit 0
+          fi
+
+          gh pr edit "$NUMBER" --body-file wanted.txt
+          echo "the block was written into pull request $NUMBER"
