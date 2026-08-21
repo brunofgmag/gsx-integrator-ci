@@ -28,6 +28,7 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           target-branch: develop
+          skip-github-release: true
 
       - name: Auto-merge release PR
         env:
@@ -47,11 +48,3 @@ jobs:
             exit 1
           fi
           gh pr merge "$pr" --squash --admin
-
-      - name: Publish release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
-        with:
-          token: ${{ secrets.RELEASE_MERGE_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          target-branch: develop
