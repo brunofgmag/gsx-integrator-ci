@@ -37,12 +37,32 @@ runs:
         modules: ${{ inputs.qt-modules }}
         cache: true
 
+    - name: Resolve MSFS SDK cache key
+      if: inputs.sdk-url != '' && inputs.sdk-sha256 != ''
+      id: sdk-cache
+      shell: pwsh
+      env:
+        MSFS_SDK_SHA256: ${{ inputs.sdk-sha256 }}
+      run: |
+        $normalised = $env:MSFS_SDK_SHA256.Trim().ToLowerInvariant()
+        $stream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($normalised))
+        $key = (Get-FileHash -InputStream $stream -Algorithm SHA256).Hash.Substring(0, 16).ToLowerInvariant()
+        "key=$key" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    - name: Cache MSFS SDK archive
+      if: inputs.sdk-url != '' && inputs.sdk-sha256 != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/msfs-sdk-cache
+        key: msfs-sdk-${{ runner.os }}-${{ steps.sdk-cache.outputs.key }}
+
     - name: Provision MSFS SDK
       if: inputs.sdk-url != ''
       shell: pwsh
       env:
         MSFS_SDK_URL: ${{ inputs.sdk-url }}
         MSFS_SDK_SHA256: ${{ inputs.sdk-sha256 }}
+        MSFS_SDK_CACHE_DIR: ${{ inputs.sdk-sha256 != '' && format('{0}/msfs-sdk-cache', runner.temp) || '' }}
       run: |
         if ($env:MSFS_SDK_SHA256) {
           ./tools/setup-msfs-sdk.ps1 -Url $env:MSFS_SDK_URL -Sha256 $env:MSFS_SDK_SHA256
