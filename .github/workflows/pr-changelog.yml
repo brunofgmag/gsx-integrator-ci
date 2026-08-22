@@ -29,13 +29,18 @@ jobs:
             exit 1
           fi
 
+          type="$(printf '%s' "$TITLE" | sed -E 's/^([a-z]+)(\([^)]*\))?!?: .*/\1/')"
           head="$(printf '%s' "$TITLE" | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//')"
+          case "$type" in
+            feat|feature|fix|perf|revert) lead="pr: $head (#$NUMBER)" ;;
+            *) lead="$TITLE (#$NUMBER)" ;;
+          esac
           spaced="$(printf '%s\n' "$subjects" | awk 'NF { if (n++) print ""; print }')"
 
           {
             echo 'block<<FSORG_BLOCK_EOF'
-            printf 'BEGIN_COMMIT_OVERRIDE\npr: %s (#%s)\n\n%s\nEND_COMMIT_OVERRIDE\n' \
-              "$head" "$NUMBER" "$spaced"
+            printf 'BEGIN_COMMIT_OVERRIDE\n%s\n\n%s\nEND_COMMIT_OVERRIDE\n' \
+              "$lead" "$spaced"
             echo 'FSORG_BLOCK_EOF'
           } >> "$GITHUB_OUTPUT"
 
