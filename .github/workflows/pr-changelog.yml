@@ -16,11 +16,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
           NUMBER: ${{ github.event.pull_request.number }}
           TITLE: ${{ github.event.pull_request.title }}
         run: |
           subjects="$(gh api "repos/$GH_REPO/pulls/$NUMBER/commits" --paginate \
-            --jq '.[].commit.message | split("\n")[0]' | grep -vE '^(Merge|Revert) ' || true)"
+            --jq '.[] | "\(.commit.message | split("\n")[0]) ([\(.sha[0:7])](\($ENV.SERVER)/\($ENV.GH_REPO)/commit/\(.sha)))"' \
+            | grep -vE '^(Merge|Revert) ' || true)"
 
           if [ -z "$subjects" ]; then
             echo "::error::pull request $NUMBER has no commit subject to list"
