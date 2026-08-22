@@ -3,9 +3,16 @@ set -euo pipefail
 
 notes="${RUNNER_TEMP:-/tmp}/release-notes.md"
 
-if gh release view "$TAG" >/dev/null 2>&1; then
-  echo "::notice::Release $TAG already exists; keeping its notes."
+if ! gh release view "$TAG" >/dev/null 2>&1; then
+  action=create
+elif [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)" = "true" ]; then
+  action=promote
 else
+  action=keep
+  echo "::notice::Release $TAG is already published; keeping its notes."
+fi
+
+if [ "$action" != keep ]; then
   prev_tag="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')"
   prev="${prev_tag#v}"
 
@@ -32,7 +39,11 @@ else
     exit 1
   fi
 
-  gh release create "$TAG" --target "$TARGET" --title "$TAG" --notes-file "$notes"
+  if [ "$action" = create ]; then
+    gh release create "$TAG" --target "$TARGET" --title "$TAG" --notes-file "$notes"
+  else
+    gh release edit "$TAG" --title "$TAG" --notes-file "$notes" --prerelease=false --latest
+  fi
 fi
 
 files=()

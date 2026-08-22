@@ -48,3 +48,37 @@ jobs:
             exit 1
           fi
           gh pr merge "$pr" --squash --admin
+
+      - name: Cut the prerelease
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_MERGE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_BRANCH: release-please--branches--develop--components--${{ github.event.repository.name }}
+        run: |
+          pr="$(gh pr list --state merged --label 'autorelease: pending' --head "$HEAD_BRANCH" \
+            --json number --jq '.[0].number // empty')"
+          if [ -z "$pr" ]; then
+            echo "No merged release PR waiting for its tag; nothing to cut."
+            exit 0
+          fi
+          version="$(gh pr view "$pr" --json title --jq .title | sed -E 's/^chore\(develop\): release //')"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::PR #$pr title carries no MAJOR.MINOR.PATCH version"
+            exit 1
+          fi
+          sha=""
+          for _ in 1 2 3 4 5; do
+            sha="$(gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // empty')"
+            [ -n "$sha" ] && break
+            sleep 3
+          done
+          if [ -z "$sha" ]; then
+            echo "::error::PR #$pr reports no merge commit"
+            exit 1
+          fi
+          if ! gh release view "v$version" >/dev/null 2>&1; then
+            gh release create "v$version" --target "$sha" --title "v$version" --prerelease \
+              --notes "Cut on develop; the deploy publishes it when main is promoted."
+          fi
+          gh label create 'autorelease: tagged' --color ededed --force >/dev/null
+          gh pr edit "$pr" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'
