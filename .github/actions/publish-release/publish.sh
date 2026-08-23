@@ -52,3 +52,18 @@ while IFS= read -r file; do
 done <<<"$ASSETS"
 
 gh release upload "$TAG" "${files[@]}" --clobber
+
+if [ "$action" = promote ]; then
+  older_than_promoted() {
+    [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]
+  }
+
+  while IFS= read -r stale_tag; do
+    [ -n "$stale_tag" ] || continue
+    if older_than_promoted "${stale_tag#v}" "$VER"; then
+      gh release delete "$stale_tag" --yes
+      echo "::notice::Deleted the prerelease page of $stale_tag, which never became a build."
+    fi
+  done < <(gh release list --exclude-drafts --limit 100 --json tagName,isPrerelease \
+    --jq '.[] | select(.isPrerelease) | .tagName')
+fi
