@@ -22,6 +22,14 @@ inputs:
     description: SDK SHA256
     required: false
     default: ''
+  sdk-required-paths:
+    description: Paths the unpacked SDK must contain, one per line; the provisioning fails naming the missing ones
+    required: false
+    default: ''
+  sdk-env-var:
+    description: Environment variable that receives the SDK root
+    required: false
+    default: 'MSFS_SDK'
 
 runs:
   using: composite
@@ -63,9 +71,21 @@ runs:
         MSFS_SDK_URL: ${{ inputs.sdk-url }}
         MSFS_SDK_SHA256: ${{ inputs.sdk-sha256 }}
         MSFS_SDK_CACHE_DIR: ${{ inputs.sdk-sha256 != '' && format('{0}/msfs-sdk-cache', runner.temp) || '' }}
+        MSFS_SDK_REQUIRED_PATHS: ${{ inputs.sdk-required-paths }}
+        MSFS_SDK_ENV_VAR: ${{ inputs.sdk-env-var }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        if ($env:MSFS_SDK_SHA256) {
-          ./tools/setup-msfs-sdk.ps1 -Url $env:MSFS_SDK_URL -Sha256 $env:MSFS_SDK_SHA256
-        } else {
-          ./tools/setup-msfs-sdk.ps1 -Url $env:MSFS_SDK_URL
+        $required = $env:MSFS_SDK_REQUIRED_PATHS -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        if (-not $required) {
+          throw 'sdk-url was given but sdk-required-paths is empty; name at least one path the unpacked SDK must contain.'
         }
+        $script = Join-Path $env:ACTION_PATH 'setup-msfs-sdk.ps1'
+        $arguments = @{
+          Url           = $env:MSFS_SDK_URL
+          RequiredPaths = $required
+          EnvVar        = $env:MSFS_SDK_ENV_VAR
+        }
+        if ($env:MSFS_SDK_SHA256) {
+          $arguments.Sha256 = $env:MSFS_SDK_SHA256
+        }
+        & $script @arguments

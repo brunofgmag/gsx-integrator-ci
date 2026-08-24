@@ -43,6 +43,14 @@ on:
         description: CMake option that configures the tests-only build, as the calling repository names it
         type: string
         default: GSXI_TESTS_ONLY
+      sdk-required-paths:
+        description: Paths the unpacked MSFS SDK must contain, one per line, as this repository needs them
+        type: string
+        default: ''
+      sdk-env-var:
+        description: Environment variable that receives the SDK root, as the build.ps1 of this repository reads it
+        type: string
+        default: 'MSFS_SDK'
 
 jobs:
   full-validation:
@@ -75,6 +83,8 @@ jobs:
           qt-modules: ${{ inputs.qt-modules }}
           sdk-url: ${{ secrets.MSFS_SDK_URL }}
           sdk-sha256: ${{ secrets.MSFS_SDK_SHA256 }}
+          sdk-required-paths: ${{ inputs.sdk-required-paths }}
+          sdk-env-var: ${{ inputs.sdk-env-var }}
 
       - name: Build
         shell: pwsh
