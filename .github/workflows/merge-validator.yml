@@ -51,6 +51,14 @@ on:
         description: Environment variable that receives the SDK root, as the build.ps1 of this repository reads it
         type: string
         default: 'MSFS_SDK'
+      linux-preset:
+        description: CMake configure, build and test preset that builds and tests natively on Linux; empty skips the Linux job
+        type: string
+        default: ''
+      linux-packages:
+        description: Extra apt packages the Linux build needs (space-separated)
+        type: string
+        default: ''
 
 jobs:
   full-validation:
@@ -89,6 +97,57 @@ jobs:
       - name: Build
         shell: pwsh
         run: ./build.ps1 -Config Release ${{ inputs.run-tests && '-RunTests' || '' }} ${{ inputs.no-sim && '-NoSim' || '' }}
+
+  linux-validation:
+    name: Build (Linux)
+    if: >-
+      inputs.linux-preset != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (!startsWith(github.event.pull_request.head.ref, 'release-please--') &&
+        (inputs.allow-forks ||
+         github.event.pull_request.head.repo.full_name == github.repository)))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check this repository has the preset
+        shell: bash
+        env:
+          PRESET: ${{ inputs.linux-preset }}
+        run: |
+          if ! grep -qs -- "\"name\": \"$PRESET\"" CMakePresets.json; then
+            echo "::error::$PRESET is not a preset in the CMakePresets.json of this repository."
+            exit 1
+          fi
+
+      - name: Install packages
+        shell: bash
+        env:
+          EXTRA: ${{ inputs.linux-packages }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libfontconfig1-dev $EXTRA
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: ${{ inputs.qt-version }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: ${{ inputs.qt-modules }}
+          cache: true
+
+      - name: Configure
+        run: cmake --preset ${{ inputs.linux-preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ inputs.linux-preset }} --parallel 4
+
+      - name: Test
+        run: ctest --preset ${{ inputs.linux-preset }} --output-on-failure
 
   domain-validation:
     name: Build (Linux, tests only)
