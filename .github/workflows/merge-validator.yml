@@ -124,11 +124,12 @@ jobs:
 
       - name: Install packages
         shell: bash
+        timeout-minutes: 10
         env:
           EXTRA: ${{ inputs.linux-packages }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libfontconfig1-dev $EXTRA
+          sudo apt-get -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 update
+          sudo apt-get -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libfontconfig1-dev $EXTRA
 
       - name: Install Qt
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
